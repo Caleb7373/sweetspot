@@ -68,7 +68,20 @@ while True:
         # Optional: Add text label
         cv2.putText(frame, "Target", (bx, by - 10), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+        # 1. Calculate the horizontal center of the object
+        obj_center_x = bx + (bw // 2)
+        cam_midline = 320
 
+        # 2. Check offsets (100 pixels left or right of 320)
+        # Left: 320 - 100 = 220 | Right: 320 + 100 = 420
+        if obj_center_x <= 220:
+            # Flash Green Square in top-left
+            cv2.rectangle(frame, (50, 50), (150, 150), (0, 255, 0), -1) 
+        elif obj_center_x >= 420:
+            # Flash Red Square in top-right
+            cv2.rectangle(frame, (490, 50), (590, 150), (0, 0, 255), -1)
+        
     cv2.imshow("Tracking", frame)
     
     # Break loop on 'q' key
