@@ -51,7 +51,25 @@ while True:
     cv2.imwrite("mask.jpg", mask)
     result = cv2.bitwise_and(frame, frame, mask=mask)
     cv2.imwrite("final_img.jpg", result)
-    cv2.imshow("Calibrating - Center Object", result)
+    #cv2.imshow("Calibrating - Center Object", result)
+        # 1. Find all contours in the mask
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        # 2. Find the largest contour by area
+        largest_cnt = max(contours, key=cv2.contourArea)
+        
+        # 3. Get the bounding box coordinates (x, y, width, height)
+        bx, by, bw, bh = cv2.boundingRect(largest_cnt)
+        
+        # 4. Draw the rectangle on your BGR frame (Green, thickness 2)
+        cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (0, 255, 0), 2)
+        
+        # Optional: Add text label
+        cv2.putText(frame, "Target", (bx, by - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    cv2.imshow("Tracking", frame)
     
     # Break loop on 'q' key
     if cv2.waitKey(1) & 0xFF == ord('q'):
