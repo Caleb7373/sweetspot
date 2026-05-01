@@ -1,0 +1,261 @@
+Environment Notes From example_code.py
+
+This document is based only on /Users/solom/Documents/Playground/example_code.py.
+It describes the runtime environment that file expects so another developer can
+write a different Python file for the same Raspberry Pi setup and have it run
+against the same hardware and libraries.
+
+Platform
+
+- Device: Raspberry Pi 4
+- Language: Python 3
+- Script style: single-file hardware control script
+- GPIO numbering mode: BCM
+- No custom local Python modules are imported in this file
+
+Python Modules Used
+
+1. time
+   - Standard library module
+   - Used for short sleeps, debounce delays, and timing with time.perf_counter()
+
+2. RPi.GPIO
+   - Imported as: import RPi.GPIO as GPIO
+   - Used for GPIO mode selection, pin setup, reading switches, and driving outputs
+   - This means the script expects to run on a Raspberry Pi with the RPi.GPIO package available
+
+3. numpy
+   - Imported as: import numpy as np
+   - Used to create HSV threshold arrays:
+     - lower = np.array([15, 249, 183])
+     - upper = np.array([18, 255, 212])
+
+4. cv2
+   - OpenCV for Python
+   - Used for:
+     - color conversion: cv2.cvtColor(..., cv2.COLOR_RGB2HSV)
+     - masking: cv2.inRange(...)
+     - contour detection: cv2.findContours(...)
+     - contour sizing: cv2.contourArea
+     - bounding boxes: cv2.boundingRect(...)
+     - keyboard polling / cleanup: cv2.waitKey, cv2.destroyAllWindows
+
+5. picamera2
+   - Imported as: from picamera2 import Picamera2 as picam
+   - Used to initialize the Raspberry Pi camera and capture frames as arrays
+   - Camera is configured with:
+     - format: RGB888
+     - size: 640 x 480
+
+Hardware Assumptions In The Code
+
+The file is not just a vision script. It expects a Raspberry Pi connected to a
+camera and several GPIO-driven devices.
+
+GPIO outputs
+
+- STEP_PIN = 23
+  - Step signal for a stepper driver
+- DIR_PIN = 24
+  - Direction signal for a stepper driver
+- ENA_PIN = 25
+  - Enable line for the motor driver
+- SHOOT_PIN = 18
+  - Output used to trigger a launcher / actuator
+
+GPIO inputs
+
+- SWITCH_PIN = 6
+  - Start button / user input switch
+  - Configured with pull-up resistor
+  - Active state is LOW when pressed
+
+- LEFT_LIMIT_PIN = 17
+  - Left travel limit switch
+  - Configured with pull-up resistor
+
+- RIGHT_LIMIT_PIN = 12
+  - Right travel limit switch
+  - Configured with pull-up resistor
+
+GPIO electrical behavior
+
+- GPIO.setmode(GPIO.BCM) is used, so pin numbers are Broadcom GPIO numbers
+- GPIO.setwarnings(False) is enabled
+- Inputs use GPIO.PUD_UP, so switches are expected to be wired for pull-up logic
+- The file sets:
+  - GPIO.output(SHOOT_PIN, GPIO.LOW)
+  - GPIO.output(ENA_PIN, GPIO.LOW)
+- Limit switch trigger logic is set to:
+  - LIMIT_TRIGGER = GPIO.HIGH
+  - A comment says this assumes "Normally Closed" wiring
+  - The file also notes that if the logic is backwards, this may need to be GPIO.LOW
+
+Camera Expectations
+
+The script expects a Raspberry Pi camera that works with Picamera2.
+
+Camera setup in the file:
+
+- cam = picam()
+- cam.configure(cam.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
+- cam.start()
+
+Frame-processing assumptions:
+
+- cam.capture_array() returns a frame
+- The frame is treated as RGB
+- OpenCV converts it to HSV
+- The script tracks an object using hard-coded HSV bounds
+
+Computer Vision Settings Present In The Code
+
+HSV thresholds:
+
+- lower = [15, 249, 183]
+- upper = [18, 255, 212]
+
+Tracking behavior:
+
+- The code finds contours in the mask
+- It chooses the largest contour
+- It computes the bounding rectangle
+- It uses the x-center of the object to decide left / center / right motion
+
+Centering thresholds:
+
+- Move left if object center x <= 220
+- Move right if object center x >= 420
+- Considered centered if between those values
+
+Behavioral Logic Present
+
+Motor movement
+
+- move(direction) writes the direction pin and then pulses STEP_PIN
+- Each move call attempts up to 5000 step pulses
+- Pulse timing is:
+  - HIGH for 0.0001 seconds
+  - LOW for 0.0001 seconds
+- In the more complete part of the file, movement checks the correct limit switch
+  before movement and during movement
+
+Trigger action
+
+- trigger_action() sets SHOOT_PIN HIGH for 1 second
+- Then it sets SHOOT_PIN LOW
+- Then it waits LET_USER_SHOOT seconds
+- LET_USER_SHOOT is set to 1
+
+System state
+
+- system_active starts as False
+- A button press on SWITCH_PIN activates the tracking loop
+- time.perf_counter() is used to measure how long the target remains centered
+- If the target stays centered for more than 3 seconds, the action is triggered
+
+Cleanup behavior
+
+The script expects normal hardware cleanup on exit:
+
+- GPIO.output(SHOOT_PIN, GPIO.LOW)
+- GPIO.cleanup()
+- cam.stop()
+- cv2.destroyAllWindows()
+
+What Another Developer Needs To Match
+
+If someone wants to write another Python file for the same environment, they
+should assume all of the following are true:
+
+- Python 3 is available
+- The following imports must work:
+  - time
+  - RPi.GPIO
+  - numpy
+  - cv2
+  - picamera2
+- The code is running on a Raspberry Pi with GPIO access
+- A Picamera2-compatible camera is attached and working
+- GPIO numbering should stay in BCM mode
+- The hardware is wired to the same GPIO pins listed above
+- Input switches are expected to use pull-up logic
+- The camera frame format is expected to be RGB888 at 640x480 unless intentionally changed
+
+Practical Compatibility Checklist
+
+Use this checklist when writing another file for the same setup:
+
+1. Import the same libraries:
+   - import time
+   - import RPi.GPIO as GPIO
+   - import numpy as np
+   - import cv2
+   - from picamera2 import Picamera2 as picam
+
+2. Initialize GPIO in BCM mode
+
+3. Configure these outputs:
+   - GPIO 23, 24, 25, 18
+
+4. Configure these inputs with pull-ups:
+   - GPIO 6, 17, 12
+
+5. Start the camera with Picamera2 and RGB888 640x480 preview configuration
+
+6. If using vision tracking, keep the HSV/OpenCV pipeline compatible:
+   - capture_array()
+   - cv2.cvtColor(..., cv2.COLOR_RGB2HSV)
+   - cv2.inRange(...)
+   - cv2.findContours(...)
+
+7. Clean up GPIO and camera resources on exit
+
+Important Note About The Source File
+
+example_code.py appears to contain a duplicated pasted block and an incomplete
+line inside a try block, so the file itself may not run exactly as written in
+its current form. Even so, the environment requirements are clear:
+
+- Raspberry Pi 4
+- Python 3
+- RPi.GPIO
+- numpy
+- OpenCV (cv2)
+- Picamera2
+- BCM-based GPIO wiring for motor control, switches, and a trigger output
+
+Minimal Import And Setup Skeleton
+
+Another developer could start with a file shaped like this and then add new
+logic on top:
+
+import time
+import RPi.GPIO as GPIO
+import numpy as np
+import cv2
+from picamera2 import Picamera2 as picam
+
+STEP_PIN = 23
+DIR_PIN = 24
+ENA_PIN = 25
+SHOOT_PIN = 18
+SWITCH_PIN = 6
+LEFT_LIMIT_PIN = 17
+RIGHT_LIMIT_PIN = 12
+
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(STEP_PIN, GPIO.OUT)
+GPIO.setup(DIR_PIN, GPIO.OUT)
+GPIO.setup(ENA_PIN, GPIO.OUT)
+GPIO.setup(SHOOT_PIN, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(SWITCH_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(LEFT_LIMIT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(RIGHT_LIMIT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+cam = picam()
+cam.configure(cam.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)}))
+cam.start()
+
+This skeleton matches the environment expected by example_code.py.
